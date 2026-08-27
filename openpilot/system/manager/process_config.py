@@ -1,10 +1,11 @@
+import importlib.util
 import os
 import platform
 import time
 
 from opendbc.car.structs import car
 from openpilot.common.params import Params
-from openpilot.common.hardware import PC, TICI
+from openpilot.common.hardware import PC, COMMA_HARDWARE
 from openpilot.common.hardware.capabilities import DRIVER_CAMERA_PROBE_TIME, driver_camera_present, set_driver_camera_present
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
 from msgq.visionipc import VisionIpcClient
@@ -12,6 +13,7 @@ from msgq.visionipc import VisionIpcClient
 WEBCAM = os.getenv("USE_WEBCAM") is not None
 LITE = os.getenv("LITE") is not None
 TICI_DOS = "TICI_DOS" in os.environ
+AIOHTTP_AVAILABLE = importlib.util.find_spec("aiohttp") is not None
 
 driver_camera_missing_since: float | None = None
 driver_camera_probe_result: bool | None = None
@@ -140,7 +142,7 @@ procs = [
   PythonProcess("dmonitoringmodeld", "openpilot.selfdrive.modeld.dmonitoringmodeld", driver_monitoring, enabled=(WEBCAM or not PC) and not LITE),
 
   PythonProcess("sensord", "openpilot.system.sensord.sensord", only_onroad, enabled=not PC),
-  PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run, restart_if_crash=True),
+  PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run),
   PythonProcess("soundd", "openpilot.selfdrive.ui.soundd", driverview, enabled=not LITE),
   PythonProcess("beepd", "dragonpilot.selfdrive.ui.beepd", beep, enabled=LITE),
   PythonProcess("locationd", "openpilot.selfdrive.locationd.locationd", only_onroad),
@@ -153,18 +155,18 @@ procs = [
   PythonProcess("card", "openpilot.selfdrive.car.card", only_onroad),
   PythonProcess("deleter", "openpilot.system.loggerd.deleter", always_run),
   PythonProcess("dmonitoringd", "openpilot.selfdrive.monitoring.dmonitoringd", driver_monitoring, enabled=(WEBCAM or not PC) and not LITE),
-  PythonProcess("qcomgpsd", "openpilot.system.qcomgpsd.qcomgpsd", qcomgps, enabled=TICI),
+  PythonProcess("qcomgpsd", "openpilot.system.qcomgpsd.qcomgpsd", qcomgps, enabled=COMMA_HARDWARE),
   PythonProcess("pandad", "openpilot.selfdrive.pandad.pandad" if not TICI_DOS else "selfdrive.pandad_tici.pandad", always_run),
   PythonProcess("paramsd", "openpilot.selfdrive.locationd.paramsd", only_onroad),
   PythonProcess("lagd", "openpilot.selfdrive.locationd.lagd", only_onroad),
-  PythonProcess("ubloxd", "openpilot.system.ubloxd.ubloxd", ublox, enabled=TICI),
-  PythonProcess("pigeond", "openpilot.system.ubloxd.pigeond", ublox, enabled=TICI),
+  PythonProcess("ubloxd", "openpilot.system.ubloxd.ubloxd", ublox, enabled=COMMA_HARDWARE),
+  PythonProcess("pigeond", "openpilot.system.ubloxd.pigeond", ublox, enabled=COMMA_HARDWARE),
   PythonProcess("plannerd", "openpilot.selfdrive.controls.plannerd", not_long_maneuver),
   PythonProcess("maneuversd", "openpilot.tools.longitudinal_maneuvers.maneuversd", long_maneuver),
   PythonProcess("lateral_maneuversd", "openpilot.tools.lateral_maneuvers.lateral_maneuversd", lat_maneuver),
   PythonProcess("radard", "openpilot.selfdrive.controls.radard", only_onroad),
   PythonProcess("hardwared", "openpilot.system.hardware.hardwared", always_run),
-  PythonProcess("modem", "openpilot.common.hardware.tici.modem", always_run, enabled=TICI and not LITE),
+  PythonProcess("modem", "openpilot.common.hardware.comma.modem", always_run, enabled=COMMA_HARDWARE and not LITE),
   PythonProcess("tombstoned", "openpilot.system.tombstoned", always_run, enabled=not PC),
   PythonProcess("updated", "openpilot.system.updated.updated", only_offroad, enabled=not PC),
   PythonProcess("uploader", "openpilot.system.loggerd.uploader", and_(comma_connect, always_run)),
@@ -175,7 +177,7 @@ procs = [
   PythonProcess("joystick", "openpilot.tools.joystick.joystick_control", and_(joystick, iscar)),
 
   # dashy
-  PythonProcess("serverd", "dragonpilot.dashy.serverd", always_run),
+  PythonProcess("serverd", "dragonpilot.dashy.serverd", always_run, enabled=AIOHTTP_AVAILABLE),
   PythonProcess("dashyd", "dragonpilot.dashy.dashyd", and_(dashy, only_onroad)),
 ]
 
