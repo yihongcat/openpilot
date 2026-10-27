@@ -33,10 +33,14 @@
     $("recording-status").textContent = data.recordingEnabled
       ? "录制已开启，行车时会保存录像和日志。"
       : "录制已关闭，不会新增行车录像和路线日志；仍可管理已有文件。";
+    $("recording-toggle").checked = data.recordingEnabled;
+    $("recording-toggle").disabled = !parked;
     const percent = 100 * data.storage.used / data.storage.total;
     $("usage").value = percent;
     $("usage-label").textContent = `已使用 ${percent.toFixed(0)}% · 录像与行车日志共 ${data.routes.length} 个行程`;
     ["auto", "keep-days", "max-gb", "save-policy", "select-old"].forEach(id => $(id).disabled = !parked);
+    $("auto").disabled = !parked || data.recordingEnabled;
+    $("max-gb").min = data.recordingEnabled ? 1 : 0;
     $("delete").disabled = !parked || !selected.size;
     $("delete").textContent = `删除所选（${selected.size}）`;
     $("route-count").textContent = data.routes.length;
@@ -93,12 +97,28 @@
       }
       if (!quiet) status(!data.isOffroad ? "设备正在行车，删除、设置和导出已暂停。" : !data.wifi ? "已读取本地录像。连接 Wi-Fi 后可以导出。" : "设备已连接 Wi-Fi，可在停车后整理和导出录像。");
       render();
+      return true;
     } catch (e) {
       if (data) data.isOffroad = false;
       render(); status(`无法连接设备：${e.message}`, true);
+      return false;
     }
   }
   ["auto", "keep-days", "max-gb"].forEach(id => $(id).addEventListener("input", () => { policyDirty = true; }));
+  $("recording-toggle").addEventListener("change", async () => {
+    const enabled = $("recording-toggle").checked;
+    $("recording-toggle").checked = !!data?.recordingEnabled;
+    if (!data?.isOffroad || busy) { status("请停车后再切换录制。", true); return; }
+    if (enabled && policyDirty) { status("请先保存自动整理设置，再开启录制。", true); return; }
+    if (enabled && !window.confirm("开启录制后会同时开启自动整理，超过保留期限或容量上限的旧录像会自动删除。确认开启录制？")) return;
+    busy = true; render();
+    try {
+      const result = await api("/recording", { enabled });
+      data.recordingEnabled = result.recordingEnabled; data.policy = result.policy; policyDirty = false;
+      if (await refresh(true)) status(enabled ? "录制已开启，下次行车时开始保存；自动整理已开启。" : "录制已关闭，已有录像仍然保留。");
+    } catch (err) { status(`切换失败：${err.message}`, true); }
+    finally { busy = false; render(); }
+  });
   $("policy-form").addEventListener("submit", async e => {
     e.preventDefault();
     const policy = { enabled: $("auto").checked, keep_days: Number($("keep-days").value), max_gb: Number($("max-gb").value) };
